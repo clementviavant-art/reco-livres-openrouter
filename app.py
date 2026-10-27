@@ -137,14 +137,18 @@ def catalogue_for_prompt(df):
     return "\n".join(lines)
 
 
+
 def call_ai(system_prompt, user_prompt, max_tokens):
     """Appel unique à OpenRouter avec gestion des erreurs."""
 
     response = client.chat.completions.create(
         model=MODEL,
-        messages=messages,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
         max_tokens=max_tokens,
-       temperature=0.4,
+        temperature=0.4,
         extra_body={
             "reasoning": {
                 "effort": "none",
@@ -152,8 +156,8 @@ def call_ai(system_prompt, user_prompt, max_tokens):
             }
         }
     )
-    
 
+    # Diagnostic temporaire
     st.write("Fin de réponse :", response.choices[0].finish_reason)
     st.write("Message complet :", response.choices[0].message)
     st.write("Détails des tokens :", response.usage)
@@ -170,6 +174,7 @@ def call_ai(system_prompt, user_prompt, max_tokens):
         }
 
     return content.strip(), usage_info
+
 
 
 def parse_recommendations(raw_text, df):
