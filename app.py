@@ -119,9 +119,9 @@ except Exception as exc:
 # OUTILS
 # ============================================================
 def babelio_search_url(title, author):
-    """Génère un lien de recherche Babelio pour un livre."""
+    """Génère un lien vers la recherche Babelio du livre."""
     query = quote_plus(f"{title} {author}")
-    return f"https://www.babelio.com/recherche.php?Recherche={query}"
+    return f"https://www.babelio.com/recherche.php?q={query}"
     
 def normalize_text(text):
     """Normalise une chaîne pour comparer les titres."""
