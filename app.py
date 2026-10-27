@@ -155,6 +155,9 @@ def call_ai(system_prompt, user_prompt, max_tokens):
         },
     )
 
+    st.write("Fin de réponse :", response.choices[0].finish_reason)
+    st.write("Réponse brute de l'IA :", response.choices[0].message.content)
+
     content = response.choices[0].message.content or ""
     usage = response.usage
 
