@@ -476,85 +476,25 @@ st.divider()
 # Formulaire de recommandations
 # ------------------------------------------------------------
 
-st.header("🔎 Trouve un livre qui te correspond")
+st.subheader("📚 Quel livre te ferait envie ?")
 
-with st.form("recommendation_form"):
-    genres = st.multiselect(
-        "Quels genres aimerais-tu lire ?",
-        [
-            "Thriller",
-            "Policier",
-            "Suspense psychologique",
-            "Roman contemporain",
-            "Littérature générale",
-            "Romance",
-            "Science-fiction",
-            "Fantasy",
-            "Fantastique",
-            "Historique",
-            "Biographie",
-            "Développement personnel",
-            "Aventure",
-            "Humour",
-            "Feel-good",
-        ],
-    )
+envie = st.text_area(
+    "Décris ce que tu aimerais lire",
+    placeholder=(
+        "Ex. : Un thriller captivant, des secrets de famille, "
+        "un livre facile à lire, pas trop long..."
+    ),
+    height=120,
+    label_visibility="collapsed",
+)
 
-    mood = st.selectbox(
-        "Quelle ambiance recherches-tu ?",
-        [
-            "Peu importe",
-            "Captivante et pleine de suspense",
-            "Sombre et inquiétante",
-            "Émouvante",
-            "Légère et divertissante",
-            "Réconfortante",
-            "Intellectuelle et profonde",
-            "Dépaysante",
-            "Romantique",
-            "Surprenante avec des rebondissements",
-        ],
-    )
-
-    length = st.selectbox(
-        "Quelle longueur préfères-tu ?",
-        [
-            "Peu importe",
-            "Court",
-            "Moyen",
-            "Long",
-        ],
-    )
-
-    audience = st.selectbox(
-        "Pour qui cherches-tu un livre ?",
-        [
-            "Pour moi",
-            "Pour un adulte",
-            "Pour un adolescent",
-            "Pour un enfant",
-            "Pour un lecteur de la famille",
-        ],
-    )
-
-    exclusions = st.text_input(
-        "Y a-t-il des genres, thèmes ou livres à éviter ?",
-        placeholder="Ex. : pas de romance, pas de violence graphique...",
-    )
-
-    extra_details = st.text_area(
-        "D'autres envies ou précisions ?",
-        placeholder=(
-            "Ex. : j'aime les intrigues avec un twist final, "
-            "les personnages complexes..."
-        ),
-        height=100,
-    )
-
-    submitted = st.form_submit_button(
-        "✨ Trouver mes recommandations",
-        use_container_width=True,
-    )
+if st.button("✨ Trouver mes livres", type="primary"):
+    if not envie.strip():
+        st.warning("Décris simplement ce que tu aimerais lire.")
+    else:
+        # Transmettre 'envie' à la fonction de recommandation
+        # à la place des différents critères de sélection.
+        st.session_state["envie_livre"] = envie.strip()
 
 # ------------------------------------------------------------
 # Résultats
