@@ -19,7 +19,7 @@ st.set_page_config(
 MODEL = "nvidia/nemotron-3.5-super-vl:free"
 CSV_FILE = "livres.csv"
 
-MAIN_TOKENS = 700
+MAIN_TOKENS = 1400
 DISCOVERY_TOKENS = 250
 HOME_SAMPLE_SIZE = 30
 
