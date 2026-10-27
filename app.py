@@ -208,8 +208,37 @@ def parse_recommendations(raw_text, df):
 
         parts = [part.strip() for part in line.split("|")]
 
-        if len(parts) >= 3 and parts[0].upper() == "ID":
-            book_id = parts[1]
+
+        if len(parts) >= 3 and (
+            parts[0].upper() == "ID"
+            or parts[0].isdigit()
+        ):
+            if parts[0].upper() == "ID":
+                book_id = parts[1]
+                reason_parts = parts[2:]
+            else:
+                book_id = parts[0]
+                reason_parts = parts[2:]
+
+            if book_id not in by_id:
+                continue
+        
+            row = by_id[book_id]
+        
+            if any(
+                int(item["ID"]) == int(book_id)
+                for item in recommendations
+            ):
+                continue
+        
+            recommendations.append({
+                "ID": int(book_id),
+                "titre": row["Titre du livre"],
+                "auteur": row["Auteur"],
+                "raison": "|".join(reason_parts).strip(),
+                "externe": False,
+            })
+
 
             if book_id not in by_id:
                 continue
