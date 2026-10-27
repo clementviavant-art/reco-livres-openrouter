@@ -139,21 +139,20 @@ def catalogue_for_prompt(df):
 
 def call_ai(system_prompt, user_prompt, max_tokens):
     """Appel unique à OpenRouter avec gestion des erreurs."""
+
     response = client.chat.completions.create(
         model=MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=messages,
         max_tokens=max_tokens,
-        temperature=0.4,
+       temperature=0.4,
         extra_body={
             "reasoning": {
-                "effort": "low",
-                "exclude": True,
+                "effort": "none",
+                "exclude": True
             }
-        },
+        }
     )
+    
 
     st.write("Fin de réponse :", response.choices[0].finish_reason)
     st.write("Message complet :", response.choices[0].message)
