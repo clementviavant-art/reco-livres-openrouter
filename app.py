@@ -200,6 +200,7 @@ def parse_recommendations(raw_text, df):
     recommendations = []
     external = None
     seen_ids = set()
+    external_rejection = None
 
     for original_line in raw_text.splitlines():
         line = original_line.strip()
@@ -214,28 +215,41 @@ def parse_recommendations(raw_text, df):
 
         # Recommandation extérieure au catalogue
         if len(parts) >= 4 and parts[0].upper() == "EXT":
-            title = parts[1]
-            author = parts[2]
+            title = parts[1].strip()
+            author = parts[2].strip()
             reason = "|".join(parts[3:]).strip()
 
             normalized_title = normalize_text(title)
 
-            if (
-                title
-                and author
-                and normalized_title not in catalogue_titles
-                and normalized_title not in {
-                    normalize_text(item["titre"])
-                    for item in recommendations
-                }
-            ):
-                external = {
-                    "titre": title,
-                    "auteur": author,
-                    "raison": reason,
-                    "externe": True,
-                }
+            if not title or not author or not reason:
+                external_rejection = (
+                    f"Informations manquantes : titre={bool(title)}, "
+                    f"auteur={bool(author)}, raison={bool(reason)}"
+                )
+                continue
 
+            if normalized_title in catalogue_titles:
+                external_rejection = (
+                    f"Le titre « {title} » existe déjà dans le catalogue."
+                )
+                continue
+
+            if any(
+                normalize_text(item["titre"]) == normalized_title
+                for item in recommendations
+            ):
+                external_rejection = (
+                    f"Le titre « {title} » est déjà dans les recommandations."
+                )
+                continue
+
+            external = {
+                "titre": title,
+                "auteur": author,
+                "raison": reason,
+                "externe": True,
+            }
+            external_rejection = None
             continue
 
         # Formats possibles pour le catalogue
@@ -253,7 +267,6 @@ def parse_recommendations(raw_text, df):
         else:
             continue
 
-        # Validation stricte de l'identifiant
         if book_id not in by_id or book_id in seen_ids:
             continue
 
@@ -267,6 +280,13 @@ def parse_recommendations(raw_text, df):
             "raison": reason,
             "externe": False,
         })
+
+    # Diagnostic utile si la recommandation externe n'a pas été acceptée
+    if external is None:
+        print(
+            "Diagnostic recommandation extérieure :",
+            external_rejection or "Aucune ligne EXT valide détectée."
+        )
 
     return recommendations[:3], external
 
