@@ -550,6 +550,7 @@ if "last_recommendations" in st.session_state:
         st.link_button(
             "📖 Voir sur Babelio",
             babelio_search_url(book["titre"], book["auteur"]),
+        )
         st.write(
             book["raison"]
             or "Une suggestion choisie pour tes envies de lecture."
