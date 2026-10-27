@@ -5,6 +5,7 @@ import random
 import pandas as pd
 import streamlit as st
 from openai import OpenAI
+from urllib.parse import quote_plus
 
 # ============================================================
 # CONFIGURATION
@@ -19,7 +20,7 @@ st.set_page_config(
 MODEL = "nvidia/nemotron-3.5-super-vl:free"
 CSV_FILE = "livres.csv"
 
-MAIN_TOKENS = 1400
+MAIN_TOKENS = 2000
 DISCOVERY_TOKENS = 250
 HOME_SAMPLE_SIZE = 30
 
@@ -117,7 +118,11 @@ except Exception as exc:
 # ============================================================
 # OUTILS
 # ============================================================
-
+def babelio_search_url(title, author):
+    """Génère un lien de recherche Babelio pour un livre."""
+    query = quote_plus(f"{title} {author}")
+    return f"https://www.babelio.com/recherche.php?Recherche={query}"
+    
 def normalize_text(text):
     """Normalise une chaîne pour comparer les titres."""
     return re.sub(r"\s+", " ", str(text).strip().lower())
@@ -332,38 +337,37 @@ def recommend_books(df, envie):
     full_catalogue = catalogue_for_prompt(df)
 
     system_prompt = """
-Tu es un excellent libraire et conseiller littéraire.
+Tu es un conseiller littéraire qui recommande des livres de manière personnalisée.
 
-Ta mission est de comprendre les envies exprimées librement par
-le lecteur et de lui conseiller des livres qui lui correspondent.
+Tu dois proposer :
+- 3 livres présents dans le catalogue fourni ;
+- 1 livre supplémentaire qui ne figure pas dans le catalogue.
 
-Le lecteur peut mentionner des genres, des auteurs, des ambiances,
-des thèmes, des longueurs, des livres aimés ou détestés, ou toute
-autre préférence. Interprète naturellement sa demande.
+Pour chaque livre, rédige une présentation détaillée de 3 à 5 phrases.
+Chaque présentation doit :
+- expliquer précisément pourquoi ce livre correspond aux envies du lecteur ;
+- présenter l'intrigue ou le sujet sans révéler les éléments importants de l'histoire ;
+- décrire l'ambiance, le style ou le rythme de lecture ;
+- expliquer ce qui pourrait particulièrement plaire au lecteur.
 
-RÈGLES IMPORTANTES :
-- Le catalogue fourni est le catalogue complet disponible.
-- Sélectionne exactement trois livres distincts de ce catalogue.
-- Utilise leurs identifiants numériques pour les désigner.
-- Ajoute une quatrième recommandation extérieure au catalogue.
-- Cette recommandation extérieure doit être un vrai livre identifiable,
-  avec un titre et un auteur.
-- Respecte toutes les préférences et exclusions exprimées.
-- Si la demande est vague, propose trois choix variés et pertinents.
-- Ne prétends pas connaître des goûts que le lecteur n'a pas indiqués.
-- Les raisons doivent être personnalisées et courtes.
-- N'ajoute ni introduction, ni conclusion, ni Markdown.
-- N'invente aucun identifiant du catalogue.
-- N'utilise pas un livre du catalogue comme recommandation extérieure.
+Évite les descriptions génériques. Chaque recommandation doit être personnalisée et apporter de vraies informations utiles pour choisir sa prochaine lecture.
 
-FORMAT DE SORTIE STRICT :
-ID|identifiant|raison courte
-ID|identifiant|raison courte
-ID|identifiant|raison courte
-EXT|titre du livre|auteur|raison courte
+Pour le livre supplémentaire, indique également son titre exact et son auteur.
 
-Remplace les champs par les valeurs correspondantes.
-Renvoie exactement quatre lignes.
+Respecte impérativement le format suivant, avec une seule recommandation par ligne :
+
+ID|identifiant|présentation détaillée
+ID|identifiant|présentation détaillée
+ID|identifiant|présentation détaillée
+EXT|titre du livre|auteur|présentation détaillée
+
+Règles importantes :
+- Pour les 3 livres du catalogue, utilise uniquement les identifiants fournis.
+- N'invente aucun identifiant.
+- Le livre supplémentaire doit être différent des 3 livres du catalogue.
+- N'ajoute aucun texte avant ou après les 4 lignes.
+- N'utilise jamais le caractère | dans les présentations.
+- Ne révèle pas la fin des livres ni les principaux retournements de situation.
 """
 
     user_prompt = f"""
@@ -543,6 +547,9 @@ if "last_recommendations" in st.session_state:
     for i, book in enumerate(recommendations, start=1):
         st.subheader(f"{i}. {book['titre']}")
         st.write(f"**Auteur :** {book['auteur']}")
+        st.link_button(
+            "📖 Voir sur Babelio",
+            babelio_search_url(book["titre"], book["auteur"]),
         st.write(
             book["raison"]
             or "Une suggestion choisie pour tes envies de lecture."
@@ -553,6 +560,10 @@ if "last_recommendations" in st.session_state:
         st.subheader("🌟 Une découverte en dehors de ton catalogue")
         st.markdown(f"### {external['titre']}")
         st.write(f"**Auteur :** {external['auteur']}")
+        st.link_button(
+            "📖 Voir sur Babelio",
+            babelio_search_url(external["titre"], external["auteur"]),
+        )
         st.write(external["raison"])
 
     else:
