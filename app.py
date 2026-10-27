@@ -157,10 +157,6 @@ def call_ai(system_prompt, user_prompt, max_tokens):
         }
     )
 
-    # Diagnostic temporaire
-    st.write("Fin de réponse :", response.choices[0].finish_reason)
-    st.write("Message complet :", response.choices[0].message)
-    st.write("Détails des tokens :", response.usage)
 
     content = response.choices[0].message.content or ""
     usage = response.usage
