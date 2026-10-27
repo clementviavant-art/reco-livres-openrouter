@@ -23,6 +23,7 @@ MAIN_TOKENS = 1400
 DISCOVERY_TOKENS = 250
 HOME_SAMPLE_SIZE = 30
 
+
 # ============================================================
 # CLIENT OPENROUTER
 # ============================================================
@@ -56,6 +57,7 @@ def get_client():
 
 client = get_client()
 
+
 # ============================================================
 # CHARGEMENT DU CATALOGUE
 # ============================================================
@@ -63,6 +65,7 @@ client = get_client()
 @st.cache_data
 def load_catalogue():
     """Charge le CSV et attribue un identifiant à chaque livre."""
+
     if not os.path.exists(CSV_FILE):
         raise FileNotFoundError(
             f"Le fichier {CSV_FILE} est introuvable. "
@@ -76,10 +79,10 @@ def load_catalogue():
         dtype=str,
     ).fillna("")
 
-    # Nettoyage des noms de colonnes
     df.columns = [col.strip() for col in df.columns]
 
     required = {"Auteur", "Titre du livre"}
+
     if not required.issubset(set(df.columns)):
         raise ValueError(
             "Le CSV doit contenir les colonnes "
@@ -99,8 +102,6 @@ def load_catalogue():
         keep="first",
     ).reset_index(drop=True)
 
-    # Identifiants courts : le modèle renvoie les IDs,
-    # et non les titres complets.
     df.insert(0, "ID", range(1, len(df) + 1))
 
     return df
@@ -123,10 +124,8 @@ def normalize_text(text):
 
 
 def catalogue_for_prompt(df):
-    """
-    Format compact transmis à l'IA.
-    Le catalogue entier est conservé pour les recommandations principales.
-    """
+    """Prépare le catalogue compact transmis à l'IA."""
+
     lines = []
 
     for _, row in df.iterrows():
@@ -137,9 +136,8 @@ def catalogue_for_prompt(df):
     return "\n".join(lines)
 
 
-
 def call_ai(system_prompt, user_prompt, max_tokens):
-    """Appel unique à OpenRouter avec gestion des erreurs."""
+    """Appel unique à OpenRouter."""
 
     response = client.chat.completions.create(
         model=MODEL,
@@ -152,16 +150,16 @@ def call_ai(system_prompt, user_prompt, max_tokens):
         extra_body={
             "reasoning": {
                 "effort": "none",
-                "exclude": True
+                "exclude": True,
             }
-        }
+        },
     )
-
 
     content = response.choices[0].message.content or ""
     usage = response.usage
 
     usage_info = None
+
     if usage:
         usage_info = {
             "prompt_tokens": getattr(usage, "prompt_tokens", None),
@@ -172,25 +170,31 @@ def call_ai(system_prompt, user_prompt, max_tokens):
     return content.strip(), usage_info
 
 
+# ============================================================
+# PARSING DES RECOMMANDATIONS
+# ============================================================
 
 def parse_recommendations(raw_text, df):
     """
-    Format attendu :
+    Accepte les formats :
     ID|identifiant|raison
-    ID|identifiant|raison
-    ID|identifiant|raison
+    identifiant|auteur|raison
     EXT|titre|auteur|raison
-
-    Vérifie que les trois recommandations du catalogue
-    correspondent réellement à des livres du CSV.
     """
+
     by_id = {
         str(int(row["ID"])): row
         for _, row in df.iterrows()
     }
 
+    catalogue_titles = {
+        normalize_text(title)
+        for title in df["Titre du livre"].tolist()
+    }
+
     recommendations = []
     external = None
+    seen_ids = set()
 
     for original_line in raw_text.splitlines():
         line = original_line.strip()
@@ -198,83 +202,27 @@ def parse_recommendations(raw_text, df):
         if not line:
             continue
 
-        # Retire les éventuelles puces ou clôtures Markdown.
         line = re.sub(r"^[-*•\s]+", "", line)
         line = line.replace("`", "")
 
         parts = [part.strip() for part in line.split("|")]
 
-
-        if len(parts) >= 3 and (
-            parts[0].upper() == "ID"
-            or parts[0].isdigit()
-        ):
-            if parts[0].upper() == "ID":
-                book_id = parts[1]
-                reason_parts = parts[2:]
-            else:
-                book_id = parts[0]
-                reason_parts = parts[2:]
-
-            if book_id not in by_id:
-                continue
-        
-            row = by_id[book_id]
-        
-            if any(
-                int(item["ID"]) == int(book_id)
-                for item in recommendations
-            ):
-                continue
-        
-            recommendations.append({
-                "ID": int(book_id),
-                "titre": row["Titre du livre"],
-                "auteur": row["Auteur"],
-                "raison": "|".join(reason_parts).strip(),
-                "externe": False,
-            })
-
-
-            if book_id not in by_id:
-                continue
-
-            row = by_id[book_id]
-
-            if any(
-                int(item["ID"]) == int(book_id)
-                for item in recommendations
-            ):
-                continue
-
-            recommendations.append({
-                "ID": int(book_id),
-                "titre": row["Titre du livre"],
-                "auteur": row["Auteur"],
-                "raison": "|".join(parts[2:]).strip(),
-                "externe": False,
-            })
-
-        elif len(parts) >= 4 and parts[0].upper() == "EXT":
+        # Recommandation extérieure au catalogue
+        if len(parts) >= 4 and parts[0].upper() == "EXT":
             title = parts[1]
             author = parts[2]
             reason = "|".join(parts[3:]).strip()
 
-            catalogue_titles = {
-                normalize_text(title_value)
-                for title_value in df["Titre du livre"].tolist()
-            }
-
-            selected_titles = {
-                normalize_text(item["titre"])
-                for item in recommendations
-            }
+            normalized_title = normalize_text(title)
 
             if (
                 title
                 and author
-                and normalize_text(title) not in catalogue_titles
-                and normalize_text(title) not in selected_titles
+                and normalized_title not in catalogue_titles
+                and normalized_title not in {
+                    normalize_text(item["titre"])
+                    for item in recommendations
+                }
             ):
                 external = {
                     "titre": title,
@@ -282,6 +230,38 @@ def parse_recommendations(raw_text, df):
                     "raison": reason,
                     "externe": True,
                 }
+
+            continue
+
+        # Formats possibles pour le catalogue
+        if len(parts) < 3:
+            continue
+
+        if parts[0].upper() == "ID":
+            book_id = parts[1]
+            reason = "|".join(parts[2:]).strip()
+
+        elif parts[0].isdigit():
+            book_id = parts[0]
+            reason = "|".join(parts[2:]).strip()
+
+        else:
+            continue
+
+        # Validation stricte de l'identifiant
+        if book_id not in by_id or book_id in seen_ids:
+            continue
+
+        row = by_id[book_id]
+        seen_ids.add(book_id)
+
+        recommendations.append({
+            "ID": int(book_id),
+            "titre": row["Titre du livre"],
+            "auteur": row["Auteur"],
+            "raison": reason,
+            "externe": False,
+        })
 
     return recommendations[:3], external
 
@@ -291,12 +271,10 @@ def parse_recommendations(raw_text, df):
 # ============================================================
 
 def generate_home_suggestions(df):
-    """
-    Génère deux suggestions à partir d'un échantillon du catalogue.
-    Le résultat est conservé dans la session Streamlit.
-    """
+    """Génère deux idées à partir d'un échantillon du catalogue."""
+
     sample_size = min(HOME_SAMPLE_SIZE, len(df))
-    sample = df.sample(n=sample_size, random_state=None)
+    sample = df.sample(n=sample_size)
 
     lines = [
         f"{int(row['ID'])}|{row['Auteur']}|{row['Titre du livre']}"
@@ -305,19 +283,23 @@ def generate_home_suggestions(df):
 
     system_prompt = """
 Tu es un conseiller littéraire chaleureux et pertinent.
-Tu proposes des idées de lecture à une famille.
-Réponds uniquement avec deux lignes au format :
+
+Choisis deux livres différents dans la liste fournie.
+Utilise exclusivement les identifiants présents dans cette liste.
+
+Réponds uniquement avec deux lignes, sans introduction ni conclusion.
+Format obligatoire :
 ID|identifiant|raison courte
 
-Choisis uniquement des identifiants présents dans la liste.
-Choisis deux livres différents.
-N'ajoute aucun texte avant ou après les deux lignes.
+La raison doit donner envie de découvrir le livre.
+Chaque raison doit être courte.
+N'ajoute aucun autre texte.
 """
 
     user_prompt = (
-        "Voici une sélection de livres du catalogue :\n\n"
+        "Voici les livres disponibles :\n"
         + "\n".join(lines)
-        + "\n\nChoisis deux livres variés qui donnent envie de lire."
+        + "\n\nChoisis deux livres intéressants et variés."
     )
 
     raw_text, usage = call_ai(
@@ -331,7 +313,7 @@ N'ajoute aucun texte avant ou après les deux lignes.
     if len(selected) < 2:
         raise ValueError(
             "L'IA n'a pas renvoyé deux suggestions exploitables. "
-            "Clique sur le bouton pour réessayer."
+            "Tu peux réessayer."
         )
 
     return selected[:2], usage
@@ -341,39 +323,38 @@ N'ajoute aucun texte avant ou après les deux lignes.
 # RECOMMANDATIONS PERSONNALISÉES
 # ============================================================
 
-def recommend_books(
-    df,
-    genres,
-    mood,
-    length,
-    audience,
-    exclusions,
-    extra_details,
-):
+def recommend_books(df, envie):
     """
-    Envoie l'intégralité du catalogue à l'IA.
-    Une seule requête est utilisée pour les recommandations principales.
+    Envoie le catalogue complet et les envies exprimées en texte libre.
+    Une seule requête sert à produire les recommandations principales.
     """
+
     full_catalogue = catalogue_for_prompt(df)
 
     system_prompt = """
 Tu es un excellent libraire et conseiller littéraire.
-Tu dois sélectionner des livres pertinents en respectant strictement
-les préférences du lecteur.
+
+Ta mission est de comprendre les envies exprimées librement par
+le lecteur et de lui conseiller des livres qui lui correspondent.
+
+Le lecteur peut mentionner des genres, des auteurs, des ambiances,
+des thèmes, des longueurs, des livres aimés ou détestés, ou toute
+autre préférence. Interprète naturellement sa demande.
 
 RÈGLES IMPORTANTES :
-- La liste fournie est le catalogue complet disponible.
-- Choisis exactement trois livres distincts dans ce catalogue.
-- Utilise uniquement leurs identifiants numériques pour les désigner.
-- Ajoute obligatoirement une quatrième recommandation extérieure
-  au catalogue, qui ne figure pas dans la liste.
-- La recommandation extérieure doit être un vrai livre identifiable,
+- Le catalogue fourni est le catalogue complet disponible.
+- Sélectionne exactement trois livres distincts de ce catalogue.
+- Utilise leurs identifiants numériques pour les désigner.
+- Ajoute une quatrième recommandation extérieure au catalogue.
+- Cette recommandation extérieure doit être un vrai livre identifiable,
   avec un titre et un auteur.
-- Ne répète aucun livre.
-- Respecte les exclusions indiquées.
+- Respecte toutes les préférences et exclusions exprimées.
+- Si la demande est vague, propose trois choix variés et pertinents.
+- Ne prétends pas connaître des goûts que le lecteur n'a pas indiqués.
 - Les raisons doivent être personnalisées et courtes.
-- Ne fournis ni introduction, ni conclusion, ni Markdown.
-- N'invente jamais un identifiant de livre du catalogue.
+- N'ajoute ni introduction, ni conclusion, ni Markdown.
+- N'invente aucun identifiant du catalogue.
+- N'utilise pas un livre du catalogue comme recommandation extérieure.
 
 FORMAT DE SORTIE STRICT :
 ID|identifiant|raison courte
@@ -381,32 +362,27 @@ ID|identifiant|raison courte
 ID|identifiant|raison courte
 EXT|titre du livre|auteur|raison courte
 
-Remplace les champs par les vraies valeurs.
+Remplace les champs par les valeurs correspondantes.
 Renvoie exactement quatre lignes.
 """
 
-    preferences = f"""
-PRÉFÉRENCES DU LECTEUR
+    user_prompt = f"""
+Voici ce que le lecteur aimerait lire :
 
-Genres recherchés : {", ".join(genres) if genres else "Libre choix"}
-Ambiance souhaitée : {mood or "Libre choix"}
-Longueur souhaitée : {length}
-Public : {audience}
-Livres, genres ou éléments à éviter : {exclusions or "Aucune exclusion"}
-Précisions supplémentaires : {extra_details or "Aucune"}
+{envie}
 
 CATALOGUE COMPLET
 Format : ID|Auteur|Titre du livre
 
 {full_catalogue}
 
-Sélectionne les livres les plus pertinents parmi l'intégralité de cette liste.
-La quatrième recommandation doit être extérieure au catalogue.
+Sélectionne les trois livres du catalogue les plus adaptés à cette demande,
+puis propose un quatrième livre extérieur au catalogue.
 """
 
     raw_text, usage = call_ai(
         system_prompt,
-        preferences,
+        user_prompt,
         MAIN_TOKENS,
     )
 
@@ -425,17 +401,18 @@ La quatrième recommandation doit être extérieure au catalogue.
 st.title("📚 Conseiller spécial pour la famille Viavant")
 
 st.write(
-    "Trouve ta prochaine lecture grâce à une sélection personnalisée "
-    "par intelligence artificielle."
+    "Décris simplement ce que tu aimerais lire. "
+    "L'intelligence artificielle cherchera les livres qui te correspondent."
 )
 
 st.caption(
     f"{len(catalogue)} livres disponibles dans le catalogue."
 )
 
-# ------------------------------------------------------------
-# Suggestions d'accueil
-# ------------------------------------------------------------
+
+# ============================================================
+# SUGGESTIONS D'ACCUEIL
+# ============================================================
 
 st.header("✨ Quelques idées pour commencer")
 
@@ -447,19 +424,19 @@ col_home1, col_home2 = st.columns([1, 4])
 with col_home1:
     if st.button("🎲 Nouvelles idées", use_container_width=True):
         st.session_state.home_suggestions = None
+        st.session_state.pop("home_error", None)
 
 if st.session_state.home_suggestions is None:
     with st.spinner("Recherche de deux idées de lecture..."):
         try:
             suggestions, home_usage = generate_home_suggestions(catalogue)
+
             st.session_state.home_suggestions = suggestions
             st.session_state.home_usage = home_usage
+            st.session_state.pop("home_error", None)
+
         except Exception as exc:
-            st.warning(
-                "Les suggestions d'accueil n'ont pas pu être générées. "
-                "Tu peux tout de même demander une recommandation ci-dessous."
-            )
-            st.caption(f"Détail technique : {exc}")
+            st.session_state.home_error = str(exc)
 
 if st.session_state.home_suggestions:
     home_cols = st.columns(2)
@@ -470,65 +447,82 @@ if st.session_state.home_suggestions:
             st.write(f"**Auteur :** {book['auteur']}")
             st.write(book["raison"])
 
+elif st.session_state.get("home_error"):
+    st.caption(
+        "Les suggestions d'accueil ne sont pas disponibles pour le moment. "
+        "Tu peux tout de même demander une recommandation ci-dessous."
+    )
+
 st.divider()
 
-# ------------------------------------------------------------
-# Formulaire de recommandations
-# ------------------------------------------------------------
 
-st.subheader("📚 Quel livre te ferait envie ?")
+# ============================================================
+# DEMANDE EN TEXTE LIBRE
+# ============================================================
 
-envie = st.text_area(
-    "Décris ce que tu aimerais lire",
-    placeholder=(
-        "Ex. : Un thriller captivant, des secrets de famille, "
-        "un livre facile à lire, pas trop long..."
-    ),
-    height=120,
-    label_visibility="collapsed",
-)
+st.header("🔎 Quel livre te ferait envie ?")
 
-if st.button("✨ Trouver mes livres", type="primary"):
-    if not envie.strip():
-        st.warning("Décris simplement ce que tu aimerais lire.")
-    else:
-        # Transmettre 'envie' à la fonction de recommandation
-        # à la place des différents critères de sélection.
-        st.session_state["envie_livre"] = envie.strip()
+with st.form("recommendation_form"):
+    envie = st.text_area(
+        "Décris tes envies de lecture",
+        placeholder=(
+            "Ex. : Je voudrais un thriller captivant avec des secrets "
+            "de famille et une fin surprenante, pas trop long.\n\n"
+            "Ou : J'ai adoré Harry Potter et je cherche un autre univers "
+            "dans lequel me plonger.\n\n"
+            "Ou encore : Je veux un roman émouvant, mais pas trop triste."
+        ),
+        height=150,
+        label_visibility="collapsed",
+    )
 
-# ------------------------------------------------------------
-# Résultats
-# ------------------------------------------------------------
+    submitted = st.form_submit_button(
+        "✨ Trouver mes livres",
+        use_container_width=True,
+        type="primary",
+    )
+
+
+# ============================================================
+# GÉNÉRATION DES RÉSULTATS
+# ============================================================
 
 if submitted:
-    with st.spinner(
-        "L'IA analyse le catalogue complet et prépare ta sélection..."
-    ):
-        try:
-            recommendations, external, usage, raw_text = recommend_books(
-                catalogue,
-                genres,
-                mood,
-                length,
-                audience,
-                exclusions,
-                extra_details,
-            )
+    if not envie.strip():
+        st.warning(
+            "Écris quelques mots sur le livre que tu aimerais lire."
+        )
 
-            st.session_state.last_recommendations = recommendations
-            st.session_state.last_external = external
-            st.session_state.last_usage = usage
-            st.session_state.last_raw = raw_text
+    else:
+        with st.spinner(
+            "Je cherche les livres qui correspondent à tes envies..."
+        ):
+            try:
+                recommendations, external, usage, raw_text = recommend_books(
+                    catalogue,
+                    envie.strip(),
+                )
 
-        except Exception as exc:
-            st.error(
-                "Impossible d'obtenir les recommandations auprès d'OpenRouter."
-            )
-            st.code(str(exc))
-            st.info(
-                "Vérifie ta clé API, le nom du modèle, "
-                "les quotas gratuits et la connexion."
-            )
+                st.session_state.last_recommendations = recommendations
+                st.session_state.last_external = external
+                st.session_state.last_usage = usage
+                st.session_state.last_raw = raw_text
+                st.session_state.last_envie = envie.strip()
+
+            except Exception as exc:
+                st.error(
+                    "Impossible d'obtenir les recommandations auprès d'OpenRouter."
+                )
+                st.code(str(exc))
+                st.info(
+                    "Vérifie ta clé API, le nom du modèle, "
+                    "les quotas gratuits et la connexion."
+                )
+
+
+# ============================================================
+# AFFICHAGE DES RÉSULTATS
+# ============================================================
 
 if "last_recommendations" in st.session_state:
     st.divider()
@@ -540,13 +534,19 @@ if "last_recommendations" in st.session_state:
     if not recommendations:
         st.warning(
             "Aucune recommandation du catalogue n'a pu être validée. "
-            "Essaie à nouveau avec des préférences plus simples."
+            "Essaie de reformuler ta demande."
         )
+
+        with st.expander("Voir la réponse reçue"):
+            st.text(st.session_state.get("last_raw", ""))
 
     for i, book in enumerate(recommendations, start=1):
         st.subheader(f"{i}. {book['titre']}")
         st.write(f"**Auteur :** {book['auteur']}")
-        st.write(book["raison"] or "Une suggestion choisie pour tes préférences.")
+        st.write(
+            book["raison"]
+            or "Une suggestion choisie pour tes envies de lecture."
+        )
         st.divider()
 
     if external:
@@ -554,14 +554,18 @@ if "last_recommendations" in st.session_state:
         st.markdown(f"### {external['titre']}")
         st.write(f"**Auteur :** {external['auteur']}")
         st.write(external["raison"])
+
     else:
         st.warning(
-            "L'IA n'a pas fourni de recommandation extérieure valide "
-            "dans cette réponse. Aucune deuxième requête automatique "
-            "n'a été lancée."
+            "La recommandation extérieure au catalogue n'a pas pu être "
+            "validée dans cette réponse."
         )
 
+        with st.expander("Voir la réponse brute de l'IA"):
+            st.text(st.session_state.get("last_raw", ""))
+
     usage = st.session_state.get("last_usage")
+
     if usage and usage.get("total_tokens") is not None:
         with st.expander("Détails techniques de la requête"):
             st.write(f"Modèle : `{MODEL}`")
