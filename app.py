@@ -90,6 +90,10 @@ def call_ai(system_prompt, user_prompt, max_tokens):
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 max_output_tokens=max_tokens,
+                thinking_config=types.ThinkingConfig(
+                    thinking_level="MINIMAL"
+                ),
+            )
             ),
         )
     except Exception as e:
