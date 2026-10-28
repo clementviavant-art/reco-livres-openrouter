@@ -95,7 +95,7 @@ def call_ai(system_prompt, user_prompt, max_tokens):
     except Exception as e:
         st.error(f"Erreur lors de l'appel à Gemini : {e}")
         raise
-    )
+    
 
     usage_metadata = response.usage_metadata
 
