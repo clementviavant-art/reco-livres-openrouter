@@ -640,7 +640,8 @@ if submitted:
 
 if "last_recommendations" in st.session_state:
     st.divider()
-    st.header("📚 Voici ta sélection")
+    st.header("📚 Voici ta sélection", anchor="voici-ta-selection")
+    scroll_to_selection()
 
     recommendations = st.session_state.last_recommendations
     external = st.session_state.last_external
@@ -685,6 +686,14 @@ if "last_recommendations" in st.session_state:
 
         with st.expander("Voir la réponse brute de l'IA"):
             st.text(st.session_state.get("last_raw", ""))
+    st.components.v1.html(
+    """
+    <script>
+    window.parent.location.hash = "voici-ta-selection";
+    </script>
+    """,
+    height=0,
+    )
 
     usage = st.session_state.get("last_usage")
 
