@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # MODEL = "nvidia/nemotron-3.5-super-vl:free"
-MODEL = "gemini-3.1-flash-lite"
+MODEL = "gemini-3.8-flash"
 CSV_FILE = "livres.csv"
 
 MAIN_TOKENS = 2000
@@ -83,13 +83,18 @@ def call_ai(system_prompt, user_prompt, max_tokens):
     """Appelle Gemini et retourne le texte et les statistiques de tokens."""
     client = get_client()
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            max_output_tokens=max_tokens,
-        ),
+    try:
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                max_output_tokens=max_tokens,
+            ),
+        )
+    except Exception as e:
+        st.error(f"Erreur lors de l'appel à Gemini : {e}")
+        raise
     )
 
     usage_metadata = response.usage_metadata
