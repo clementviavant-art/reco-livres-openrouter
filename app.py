@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # MODEL = "nvidia/nemotron-3.5-super-vl:free"
-MODEL = "gemini-3.8-flash"
+MODEL = "gemini-3.6-flash"
 CSV_FILE = "livres.csv"
 
 MAIN_TOKENS = 2000
