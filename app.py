@@ -239,6 +239,32 @@ def catalogue_for_prompt(df):
     return content.strip(), usage_info
 
 
+def scroll_to_selection():
+    st.components.v1.html(
+        """
+        <script>
+        const scrollToSelection = () => {
+            const doc = window.parent.document;
+            const headings = doc.querySelectorAll("h1, h2, h3");
+            
+            for (const heading of headings) {
+                if (heading.innerText.includes("Voici ta sélection")) {
+                    heading.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start"
+                    });
+                    return;
+                }
+            }
+        };
+
+        setTimeout(scrollToSelection, 300);
+        </script>
+        """,
+        height=0,
+    )
+
+
 # ============================================================
 # PARSING DES RECOMMANDATIONS
 # ============================================================
