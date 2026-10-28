@@ -6,6 +6,8 @@ import pandas as pd
 import streamlit as st
 from openai import OpenAI
 from urllib.parse import quote_plus
+from google import genai
+from google.genai import types
 
 # ============================================================
 # CONFIGURATION
@@ -17,7 +19,8 @@ st.set_page_config(
     layout="wide",
 )
 
-MODEL = "nvidia/nemotron-3.5-super-vl:free"
+# MODEL = "nvidia/nemotron-3.5-super-vl:free"
+MODEL = "gemini-3.1-flash-lite"
 CSV_FILE = "livres.csv"
 
 MAIN_TOKENS = 2000
@@ -29,31 +32,84 @@ HOME_SAMPLE_SIZE = 30
 # CLIENT OPENROUTER
 # ============================================================
 
+# def get_client():
+#     """Crée le client OpenAI compatible avec OpenRouter."""
+#     api_key = None
+# 
+#     try:
+#         api_key = st.secrets.get("OPENROUTER_API_KEY")
+#     except Exception:
+#         pass
+# 
+#     if not api_key:
+#         api_key = os.getenv("OPENROUTER_API_KEY")
+# 
+#     if not api_key:
+#         st.error(
+#             "Clé API OpenRouter absente. "
+#             "Ajoute OPENROUTER_API_KEY dans les Secrets Streamlit."
+#         )
+#         st.stop()
+# 
+#    return OpenAI(
+#         api_key=api_key,
+#         base_url="https://openrouter.ai/api/v1",
+#         timeout=180.0,
+#         max_retries=1,
+#     )
+
 def get_client():
-    """Crée le client OpenAI compatible avec OpenRouter."""
+    """Crée le client officiel de l'API Gemini."""
     api_key = None
 
     try:
-        api_key = st.secrets.get("OPENROUTER_API_KEY")
+        api_key = st.secrets.get("GEMINI_API_KEY")
     except Exception:
         pass
 
     if not api_key:
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key:
-        st.error(
-            "Clé API OpenRouter absente. "
-            "Ajoute OPENROUTER_API_KEY dans les Secrets Streamlit."
+        raise ValueError(
+            "Clé API Google absente. "
+            "Ajoute GEMINI_API_KEY dans les secrets Streamlit."
         )
-        st.stop()
 
-    return OpenAI(
-        api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
-        timeout=180.0,
-        max_retries=1,
+    return genai.Client(api_key=api_key)
+
+
+def call_ai(system_prompt, user_prompt, max_tokens):
+    """Appelle Gemini et retourne le texte et les statistiques de tokens."""
+    client = get_client()
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            max_output_tokens=max_tokens,
+        ),
     )
+
+    usage_metadata = response.usage_metadata
+
+    usage = {
+        "prompt_tokens": (
+            usage_metadata.prompt_token_count
+            if usage_metadata else 0
+        ),
+        "completion_tokens": (
+            usage_metadata.candidates_token_count
+            if usage_metadata else 0
+        ),
+        "total_tokens": (
+            usage_metadata.total_token_count
+            if usage_metadata else 0
+        ),
+    }
+
+    return response.text or "", usage
 
 
 client = get_client()
@@ -141,24 +197,24 @@ def catalogue_for_prompt(df):
     return "\n".join(lines)
 
 
-def call_ai(system_prompt, user_prompt, max_tokens):
-    """Appel unique à OpenRouter."""
-
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=max_tokens,
-        temperature=0.4,
-        extra_body={
-            "reasoning": {
-                "effort": "none",
-                "exclude": True,
-            }
-        },
-    )
+# def call_ai(system_prompt, user_prompt, max_tokens):
+#     """Appel unique à OpenRouter."""
+# 
+#     response = client.chat.completions.create(
+#         model=MODEL,
+#         messages=[
+#             {"role": "system", "content": system_prompt},
+#             {"role": "user", "content": user_prompt},
+#         ],
+#         max_tokens=max_tokens,
+#         temperature=0.4,
+#         extra_body={
+#             "reasoning": {
+#                 "effort": "none",
+#                 "exclude": True,
+#             }
+#         },
+#     )
 
     content = response.choices[0].message.content or ""
     usage = response.usage
